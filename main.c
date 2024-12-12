@@ -20,6 +20,17 @@
          while((start - SysTick->VAL) < ticks); \
     } while (0)
 
+#define receive_data_buffer_size 4;	
+#define transmit_data_buffer_size 21;		
+
+																						/* Data */ 
+uint8_t transmitData[transmit_data_buffer_size]={0};
+uint8_t receivedData[receive_data_buffer_size]={0};
+uint16_t ADC1_Buffer[4]={0};
+uint16_t ADC2_Buffer[4]={0};
+		
+float adcs[8]={0.0};
+
 uint8_t PWM_DUTY1=0;
 uint8_t PWM_DUTY2=0;
 uint8_t PWM_DUTY3=0;
@@ -34,22 +45,12 @@ uint8_t system_state=0;
 uint8_t crc8=0xff;
 uint8_t cycle_counter=0;
 
-uint8_t transmitData[21]={0};
-uint8_t buffer_index=0;
-uint8_t rx_buffer[4];
-uint8_t BUFFER_SIZE=4;
-uint8_t receivedData[16];
-uint8_t bytesToReceive =4;
-uint8_t index=0;
-
-uint8_t receivedDataCounter = 0;
-uint8_t i=0;
-uint8_t j=0;
+uint8_t transmit_data_counter=0; 
+uint8_t received_data_counter=0;
 uint8_t k=0;
-uint16_t ADC1_Buffer[4]={0};
-uint16_t ADC2_Buffer[4]={0};
-float adcs[8]={0.0};
-uint8_t ADC_BUFFER_SIZE=4;
+ 
+
+/* functions */ 
 
 void USART3_IRQHandler(void);
 void PWM_config(void);
@@ -57,6 +58,7 @@ void USART_config(void);
 void TX_buffer_init(void);
 void delay(uint32_t time_delay);
 void ADC12_DMA_START(void);
+void set_pwm_duty(void);
 
 
 int main(void){
@@ -79,46 +81,50 @@ int main(void){
 
 		// Duty cycles = X/255 *100%
 
-		TIM2->CCR1 = 127;
-		TIM2->CCR2 = 127;
-		TIM2->CCR3 = 127;
-		TIM2->CCR4 = 127;
+		
 
-		transmitData[2]=rx_buffer[0];
-		transmitData[3]=rx_buffer[1];
-		transmitData[4]=rx_buffer[2];
-		transmitData[5]=rx_buffer[3];
+		transmitData[2]=receivedData[0];
+		transmitData[3]=receivedData[1];
+		transmitData[4]=receivedData[2];
+		transmitData[5]=receivedData[3];
 
 	}
 }
 
 void USART3_IRQHandler(void){
+	uint8_t j=0;
 	if (USART3->ISR & USART_ISR_TXE)
         {
-
-				USART3->TDR = transmitData[i];
-				crc8 ^= transmitData[i];
-				i++;
-				        for (j = 0; j < 8; j++) {
-				            if ((crc8 & 0x80) != 0)
-				                crc8 = (uint8_t)((crc8<< 1) ^ 0x31);
-				            else
-				                crc8 <<= 1;
-				        }
-				if (i>(sizeof(transmitData)-1)){
-					i=0;
-					transmitData[19]+=1;
-					transmitData[20]=crc8;
-					crc8=0xff;
+				USART3->TDR = transmitData[transmit_data_counter];
+					
+				crc8 ^= transmitData[transmit_data_counter];
+				transmit_data_counter++;
+					
+				for (j = 0; j < 8; j++) {
+						if ((crc8 & 0x80) != 0)
+								crc8 = (uint8_t)((crc8<< 1) ^ 0x31);
+						else
+								crc8 <<= 1;
+				}
+								
+				if (transmit_data_counter>(sizeof(transmitData)-1)){
+					
+						transmit_data_counter=0;
+						
+						transmitData[19]+=1;
+						transmitData[20]=crc8;
+						crc8=0xff;
 				}
 		}
 	if (USART3->ISR & USART_ISR_RXNE) {
+		
+				
         uint8_t data = USART3->RDR;
-        if (buffer_index >= BUFFER_SIZE) {
-             buffer_index=0;
+        if (received_data_counter >= receive_data_buffer_size) {
+             received_data_counter=0;
         }
-        rx_buffer[buffer_index] = data;
-        buffer_index++;
+        receivedData[received_data_counter] = data;
+        received_data_counter++;
     }
 }
 
@@ -136,6 +142,19 @@ uint8_t gencrc(uint8_t *data, uint8_t len){
     }
     return crc;
 }
+
+void set_pwm_duty(uint8_t PWM_DUTY1, uint8_t PWM_DUTY2, uint8_t PWM_DUTY3, uint8_t PWM_DUTY4){
+	
+	if PWM_DUTY1
+		TIM2->CCR1 = PWM_DUTY1;
+		TIM2->CCR2 = PWM_DUTY2;
+		TIM2->CCR3 = PWM_DUTY3;
+		TIM2->CCR4 = PWM_DUTY4;	
+	
+	
+}
+
+	
 
 void PWM_config(void){
 
@@ -167,7 +186,6 @@ void PWM_config(void){
 
 	TIM_TimeBaseInitTypeDef  TIM_TimeBaseStructure;
 	TIM_OCInitTypeDef        TIM_OCInitStructure;
-
 
 	TIM_TimeBaseStructure.TIM_Prescaler =4;
 	TIM_TimeBaseStructure.TIM_Period = 255;
